@@ -1,20 +1,21 @@
 #ifndef _ELEC_104_H_ 
 #define _ELEC_104_H_
-
+#include <stdint.h>
 /*
  **************地址******************
 */
-#define APDU_HEAD   01
-#define APDU_LENGTH 02
-#define ACPI1       03
-#define ACPI2       04
-#define ACPI3       05
-#define ACPI4       06
-#define ASDU_TI     07
-#define ASDU_VSQ    08
-#define ASDU_COT_H  09
-#define ASDU_COT_L  10
-#define ASDU_ADDR   11
+#define ADDR_APDU_HEAD   0
+#define ADDR_APDU_LENGTH 1
+#define ADDR_ACPI1       2
+#define ADDR_ACPI2       3
+#define ADDR_ACPI3       4
+#define ADDR_ACPI4       5
+#define ADDR_ASDU_TI     6
+#define ADDR_ASDU_VSQ    7
+#define ADDR_ASDU_COT_L  8
+#define ADDR_ASDU_COT_H  9
+#define ADDR_ASDU_ADDR_L 10
+#define ADDR_ASDU_ADDR_H 11
 /*
  **************类型标识******************
 */
@@ -75,14 +76,19 @@
 #define COT_INTROGEN_16  36
 #define COT_NO_TI        44
 #define COT_NO_COS       45   
-#define COT_NO_DATA_ADDR  46
-#define COT_NO_OBJ_ADDR   47
+#define COT_NO_DATA_ADDR 46
+#define COT_NO_OBJ_ADDR  47
 #define COT_R_S_STRAP    48
 #define COT_R_TIME_STAMP 49
 #define COT_R_RSA        50
 
-#define K 12  
-#define W 1
+#define K_MAX 12  
+#define W_MAX 8
+
+#define T0 30  //秒
+#define T1 15  //秒
+#define T2 10  //秒
+#define T3 20  //秒
 /*
  **************U帧填充******************
 */
@@ -101,7 +107,8 @@
 typedef enum
 {
     STAT_104_OK           = 0x00U,
-    STAT_104_NO_FRAME     = 0x01U,
+    STAT_104_NO_FRAME     = 0x01U,    //未能识别的数据帧
+    STAT_104_NO_CONNECT   = 0x02U,    //未能建立连接
 }STAT_104_TypeDef;
 /*
  104结构体
@@ -111,11 +118,19 @@ typedef struct
     uint8_t  connectStat;     //与主站的连接状态0 未连接,1 已连接
     uint16_t rxFrameCounter;  //接收帧计数
     uint16_t txFrameCounter;  //发送帧基数
-    char rx[256];             //rx buffer
+    uint8_t rx[256];          //rx buffer
     uint8_t  rxCounter;       //接正确的字节计数
-    uint8_t  rxFlag;          //接收一帧数据标志，0未接收一帧数据，1已接收一帧数据
     uint8_t  rxLength;        //接收数据的长度
-    char tx[256];             //tx buffer,APDU
-}STR_104_TypeDef;
+    uint8_t tx[256];          //tx buffer,APDU
 
+    uint8_t t1Counter;
+    uint8_t noConfirmFlag;    //发送数据后未确认 1，已确认 0
+    uint8_t t2Counter;
+    uint8_t noSendFlag;       //接收数据后未发送 1，已发送 0
+    uint8_t t3Counter;
+    uint8_t kCounter;
+    uint8_t wCounter;
+}STR_104_TypeDef;
+void Elec_104_Init(STR_104_TypeDef *str_104);
+STAT_104_TypeDef Elec_104_Process(STR_104_TypeDef *str_104, uint8_t data);
 #endif

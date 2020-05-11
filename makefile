@@ -5,7 +5,7 @@ DIR_BIN = ./bin
 CSRC = $(wildcard ${DIR_SRC}/*.c)
 COBJ = $(patsubst %.c,${DIR_OBJ}/%.o,$(notdir ${CSRC}))
 CFLAGS =-I${DIR_INC} 
-CLDFLAGS =
+CLDFLAGS =-lpthread
                    
 CROSS_COMPILE = gcc
 TARGET = elec_104
