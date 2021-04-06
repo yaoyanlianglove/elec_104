@@ -1,4 +1,13 @@
-#include "tcp.h"
+/**
+  ******************************************************************************
+  * File Name          : tcp.c
+  * Description        : This file provides code about tcp.
+  ******************************************************************************
+  * @attention
+  *
+  *
+  ******************************************************************************
+  */
 #include <pthread.h>
 #include <stdio.h>
 #include <netinet/in.h>
@@ -7,40 +16,124 @@
 #include <unistd.h>
 #include <errno.h>
 #include "elec_104.h"
+#include "debug.h"
+#include "tcp.h"
 
-#define MAX_LINE 4096
+#define MAX_SIZE 4096
 
-pthread_mutex_t client_mutex_lock;
-
-void Sent_Data(char *data, int length)
+pthread_mutex_t sharedMutexLock;   //发送线程与接收线程共享数据线程锁
+STRU_104_TypeDef g_str104;
+/*****************************************************************************
+ Function    : Elec_104_Task_Timer
+ Description : 104线程的子线程
+ Input       : None
+ Output      : None
+ Return      : None
+ *****************************************************************************/
+void* Elec_104_Task_Timer(void *arg)
 {
-
+    int res = 1;
+    int timeCount = 0;
+    STRU_Queue_TypeDef *p;
+    pthread_detach(pthread_self());
+    STRU_104_TypeDef *str104 = (STRU_104_TypeDef *) arg;
+    DBUG("Elec_104_Task_Timer start\n");
+    while(g_str104.breakConnectFlag == 0)
+    {
+        usleep(1000);
+        if(timeCount < 1000)
+            timeCount++;
+        else
+        {
+            timeCount = 0;
+            if(str104->t3Counter < str104->config.t3)
+                str104->t3Counter++;
+            else
+            {
+                str104->t3Counter = 0;
+                str104->lastStat104 = str104->stat104;
+                str104->stat104 = STAT_104_SEND_TEST;
+            }
+            if(str104->uT1Flag == 1)
+            {
+                if(str104->t1Counter < str104->config.t1)
+                    str104->t1Counter++;
+                else
+                {
+                    str104->t1Counter = 0;
+                    str104->breakConnectFlag = 1;
+                    break;
+                }
+            }
+            if(str104->numSDWTC > 0)
+            {
+                p = str104->pSendHead;
+                while((p != NULL))
+                {
+                    if(p->txFlag == 1)
+                    {
+                        if(p->t1Counter < str104->config.t1)
+                            p->t1Counter++;
+                        else
+                        {
+                            str104->breakConnectFlag = 1;
+                            break;
+                        }
+                    }
+                    p = p->next;
+                }
+            }
+        }
+        if(str104->stat104 == STAT_104_SEND_START_ACK)
+            str104->stat104 = STAT_104_DEVICE_INIT_OK;
+    }
+    printf("Elec_104_Task_Timer end\n"); 
+    pthread_exit(0);
 }
+/*****************************************************************************
+ Function    : Pthread_104
+ Description : 104子线程
+ Input       : None
+ Output      : None
+ Return      : None
+ *****************************************************************************/
 void* Pthread_104(void *arg)
 {
     pthread_detach(pthread_self());
-    void *ret;
-    STR_Client_TypeDef *client = (STR_Client_TypeDef *) arg;
-    int socketfd, i, revNum;
-    char buff[MAX_LINE];
-    STR_104_TypeDef str_104;
-    Elec_104_Init(&str_104);
-    pthread_mutex_lock(&client_mutex_lock);
-    socketfd = client->connfd;
-    pthread_mutex_unlock(&client_mutex_lock);
-    printf("socketfd %d: Pthread_104 start!\n", socketfd);
-    while(1)
+    pthread_mutex_init(&sharedMutexLock, NULL);
+    STRU_Client_TypeDef *client = (STRU_Client_TypeDef *) arg;
+    int err;
+    pthread_t pthread104Task;
+    err = pthread_create(&pthread104Task, NULL, Elec_104_Task_Timer, (void *)&g_str104);  //创建线程  
+    if(err != 0) 
     {
-        printf("socketfd %d: Pthread_104 work!\n", socketfd);
-        revNum = recv(socketfd, buff, MAX_LINE, MSG_DONTWAIT);
+        printf("pthread_create error\n");
+        goto Pthread_104_END;
+    }
+    int socketfd, i, revNum;
+    char buff[MAX_SIZE];
+    Elec_104_Init(&g_str104);
+    socketfd = client->connfd;
+    g_str104.socketfd = socketfd;
+    DBUG("socketfd %d: Pthread_104 start!\n", socketfd);
+    int res = 0;
+    while(client->closeFlag == 0 && g_str104.breakConnectFlag == 0)
+    {
+        revNum = recv(socketfd, buff, MAX_SIZE, MSG_DONTWAIT);
         if(revNum > 0)
         {
             for(i = 0; i < revNum; i++)
-                Elec_104_Process(&str_104, buff[i]);
+            {
+                res = Elec_104_Frame_Receive(&g_str104, buff[i]);
+                if(res < 0)
+                {
+                    client->closeFlag = 1;
+                }
+            }
         }
         else if(revNum < 0)
         {
-            if(errno != EINTR && errno != EAGAIN)
+            if(errno != EWOULDBLOCK && errno != EAGAIN)
             {
                 printf("close error with msg is: %s\n", strerror(errno));
                 break;
@@ -48,67 +141,48 @@ void* Pthread_104(void *arg)
         }
         else if(revNum == 0)
         {
-            printf("Master Station close the connect\n"); 
+            DBUG("Master Station close the connect\n"); 
             break;
         } 
-        if(str_104.noConfirmFlag == 1)
-        {
-            if(str_104.t1Counter < T1)
-                str_104.t1Counter++;
-            else
-                break;
-        }
-        if(str_104.noSendFlag == 1)
-        {
-            if(str_104.t2Counter < T2)
-                str_104.t2Counter++;
-            else
-            {
-                ;//发送S格式报文
-                str_104.t2Counter = 0;
-            }
-        }
-        if(str_104.t3Counter < T3)
-            str_104.t3Counter++;
-        else
-        {
-            ;//发送测试报文
-            str_104.t3Counter = 0;
-        }
-        sleep(1);
     }
-    printf("socketfd %d: Pthread_104 end!\n", socketfd);
+    g_str104.stat104 = STAT_104_CONNECT_BREAK;
+    //关闭子线程
+    pthread_cancel(pthread104Task);
+    pthread_join(pthread104Task, NULL);
+Pthread_104_END:    
+    DBUG("socketfd %d: Pthread_104 end!\n", socketfd);
     close(socketfd);
-    pthread_mutex_lock(&client_mutex_lock);
     memset(client->cli_ip, 0, 16);
-    client->connfd = 0;
-    client->stat   = 0;
-    pthread_mutex_unlock(&client_mutex_lock);
+    client->connfd    = 0;
+    client->stat      = 0;
+    client->closeFlag = 0;
+    pthread_mutex_destroy(&sharedMutexLock);
     pthread_exit(0);
 }
+/*****************************************************************************
+ Function    : Tcp_Listen
+ Description : None
+ Input       : None
+ Output      : None
+ Return      : None
+ *****************************************************************************/
 int Tcp_Listen(const char *ip, int port)
 {
     int err, connfd, i;
     pthread_t pthread104;
-    STR_Client_TypeDef client;
-    void *ret;
+    STRU_Client_TypeDef client;
+    client.stat = 0;
     int listenfd;
     int opt = SO_REUSEADDR;
     struct sockaddr_in local;
     struct sockaddr_in client_addr;
     socklen_t sock_client_size;
     sock_client_size = sizeof(client_addr);
-    char cli_ip[INET_ADDRSTRLEN] = ""; 
-    err = pthread_mutex_init(&client_mutex_lock, NULL);
-    if (err != 0) 
-    {
-        printf("client_mutex_lock init failed\n");
-        return -1;
-    }    
+    char cli_ip[INET_ADDRSTRLEN] = "";    
     listenfd = socket(AF_INET, SOCK_STREAM, 0);
     if(listenfd < 0)
     {
-        printf("socket failed\n");
+        DBUG("socket failed\n");
         return -1;
     }
     setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
@@ -117,15 +191,15 @@ int Tcp_Listen(const char *ip, int port)
     local.sin_addr.s_addr = inet_addr(ip);
     if(bind(listenfd, (struct sockaddr *)&local, sizeof(local)) < 0)
     {
-        printf("bind failed\n");
+        DBUG("bind failed\n");
         close(listenfd);
         return -1;
     }
     if(listen(listenfd, 5) < 0)
     {
-        printf("listen failed\n");
+        DBUG("listen failed\n");
         close(listenfd);
-        return -1;;
+        return -1;
     }
     printf("Waiting client...\n"); 
     while(1)
@@ -134,27 +208,29 @@ int Tcp_Listen(const char *ip, int port)
         connfd = accept(listenfd, (struct sockaddr*)&client_addr, &sock_client_size);                                
         if(connfd < 0)  
         {  
-            printf("accept no\n");  
-            continue;  
+            if (errno == EINTR) 
+            {   
+                DBUG("accept no\n");  
+                continue;
+            }
+            else
+            {
+                return -1;
+            }  
         }   
         // 打印客户端的 ip 和端口  
         inet_ntop(AF_INET, &client_addr.sin_addr, cli_ip, INET_ADDRSTRLEN);  
-        printf("----------------------------------------------\n");  
-        printf("client ip=%s   port=%d connfd=%d\n", cli_ip, ntohs(client_addr.sin_port), connfd);  
+        DBUG("----------------------------------------------\n");  
+        DBUG("client ip=%s   port=%d connfd=%d\n", cli_ip, ntohs(client_addr.sin_port), connfd);  
         if(connfd > 0)  
         { 
-            pthread_mutex_lock(&client_mutex_lock);
             if(client.stat == 1)
             {
                 if(strcmp(cli_ip, client.cli_ip) == 0)
                 {
-                    printf("delete cli_ip is %s\n", client.cli_ip);
-                    close(client.connfd);
-                    pthread_cancel(pthread104);
-                    pthread_join(pthread104, &ret);
-                    memset(client.cli_ip, 0, 16);
-                    client.connfd = 0;
-                    client.stat   = 0;
+                    client.closeFlag = 1;//104子线还有104send子线
+                    while(client.stat == 1)
+                        ;
                 }
                 else
                 {
@@ -167,19 +243,18 @@ int Tcp_Listen(const char *ip, int port)
                 memcpy(client.cli_ip, cli_ip, 16);
                 client.connfd = connfd;
                 client.stat   = 1;
+                client.closeFlag = 0;
             }
-            //由于同一个进程内的所有线程共享内存和变量，因此在传递参数时需作特殊处理，值传递。  
             err = pthread_create(&pthread104, NULL, Pthread_104, (void *)&client);  //创建线程  
             if (err != 0) 
             {
-                printf("pthread_create error\n");
+                DBUG("pthread_create error\n");
                 close(connfd);
                 break;
             }
-            pthread_mutex_unlock(&client_mutex_lock);
         }  
     }
-    pthread_mutex_destroy(&client_mutex_lock);
     close(listenfd);
     return -1;
 }
+/************************ZXDQ *****END OF FILE****/

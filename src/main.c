@@ -1,10 +1,11 @@
 #include <stdio.h>
 #include <string.h>
-#include "tcp.h"
+#include "example.h"
+
 int main()
 {
-    printf("elec_104\n");
-    Tcp_Listen("192.168.1.102", 2404);
+    Example_Data_Map();
+    Example_Start();
     return 0;    
 }
 

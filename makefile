@@ -14,10 +14,10 @@ BIN_TARGET = ${DIR_BIN}/${TARGET}
 
 CXX = $(CROSS_COMPILE)
 ${BIN_TARGET}:${COBJ}
-	$(CXX) ${COBJ} $(CLDFLAGS) -o $@
+	$(CXX) ${COBJ} $(CLDFLAGS) -g -o $@
 
 ${DIR_OBJ}/%.o:${DIR_SRC}/%.c
-	$(CXX) $(CFLAGS) -c $^ -o $@
+	$(CXX) $(CFLAGS) -g -c $^ -g -o $@
 
 .PHONY:clean
 clean:
