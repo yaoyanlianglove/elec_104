@@ -50,31 +50,31 @@ void Elec_104_Queue_Print(STRU_Queue_TypeDef *queue)
 {
     int i = 0;
     STRU_Queue_TypeDef *p = queue;
-    printf("**************************************************\n");
+    DBUG("**************************************************\n");
     if(p == NULL)
     {
-        printf("Queue is NULL\n ");
+        DBUG("Queue is NULL\n ");
         return ;
     }
     do
     {
         if(p->data != NULL)
         {
-            printf("Queue:\n");
+            DBUG("Queue:\n");
             for(i = 0; i < p->length; i++)
-                printf("%02x ", p->data[i]);
-            printf("\n");
-            printf("p->txFlag:    %d\n", p->txFlag);
-            printf("p->txNum:     %d\n", p->txNum);
-            printf("p->length:    %d\n", p->length);
-            printf("p->priority:  %d\n", p->priority);
-            printf("\n");
+                DBUG("%02x ", p->data[i]);
+            DBUG("\n");
+            DBUG("p->txFlag:    %d\n", p->txFlag);
+            DBUG("p->txNum:     %d\n", p->txNum);
+            DBUG("p->length:    %d\n", p->length);
+            DBUG("p->priority:  %d\n", p->priority);
+            DBUG("\n");
         }
         else
-            printf("Queue is NULL\n ");   
+            DBUG("Queue is NULL\n ");   
         p = p->next;
     }while(p);
-    printf("**************************************************\n");
+    DBUG("**************************************************\n");
 }
 /*****************************************************************************
  Function    : Elec_104_Queue_Insert
@@ -89,7 +89,7 @@ STRU_Queue_TypeDef* Elec_104_Queue_Insert(STRU_104_TypeDef *str104,
     STRU_Queue_TypeDef *newQueue, *p, *p1;
     p = str104->pSendHead;
     uint8_t prio = priority;
-    //缓存达到最大值不再增加
+    /* 缓存达到最大值不再增加 */
     if(str104->numAll >= str104->config.bufferSize)
         return str104->pSendHead;
     newQueue = Elec_104_Queue_Init();
@@ -135,7 +135,8 @@ STRU_Queue_TypeDef* Elec_104_Queue_Insert(STRU_104_TypeDef *str104,
                     newQueue->next = p;
                     break;
                 }
-                if(p->next == NULL) //找到尾部还未找到小于的优先级，插在尾部
+                /* 找到尾部还未找到小于的优先级，插在尾部 */
+                if(p->next == NULL) 
                 {
                     p->next = newQueue;
                     newQueue->next = NULL;
@@ -231,7 +232,7 @@ void Elec_104_Init(STRU_104_TypeDef *str104)
     STRU_Queue_TypeDef *p;
     if(str104->stat104 != STAT_104_POWER_ON)
     {
-        //设备重新连接，将缓存中的发送状态清零
+        /* 设备重新连接，将缓存中的发送状态清零 */
         p = str104->pSendHead;
         while(p != NULL)
         {
@@ -246,9 +247,11 @@ void Elec_104_Init(STRU_104_TypeDef *str104)
     }
     str104->breakConnectFlag = 0;
     str104->uT1Flag = 0;
+    str104->timerCloseFlag = 0;
     str104->rxNum = 0;
     str104->txNum = 0;
-    str104->numSDWTC = 0;    //待确认数据清零，重新连接后，缓存数据不变
+    /* 待确认数据清零，重新连接后，缓存数据不变 */
+    str104->numSDWTC = 0;    
     str104->otherRxNum = 0;
     str104->otherTxNum = 0;
     str104->rxCounter = 0;
@@ -325,7 +328,7 @@ int Elec_104_Send_Data(STRU_104_TypeDef *str104)
         {
             if(errno != EWOULDBLOCK && errno != EAGAIN)
             {
-                printf("close error with msg is: %s\n", strerror(errno));
+                DBUG("close error with msg is: %s\n", strerror(errno));
                 break;
             } 
         }
@@ -424,7 +427,7 @@ int Elec_104_Handle_Callall(STRU_104_TypeDef *str104)
     if(res != 0)
         return res;
 
-    //遥信
+    /* 遥信 */
     num = sNum/SIGNAL_NUM_PER_PACKAGE;
     r   = sNum%SIGNAL_NUM_PER_PACKAGE;
     for(i = 0; i < num; i++)
@@ -444,7 +447,8 @@ int Elec_104_Handle_Callall(STRU_104_TypeDef *str104)
     res  = Elec_104_ASDU_Insert(str104, data, length, priority);
     if(res != 0)
         return res;
-    //遥测
+        
+    /* 遥测 */
     num = dNum/DETECT_NUM_PER_PACKAGE;
     r   = dNum%DETECT_NUM_PER_PACKAGE;
     for(i = 0; i < num; i++)
@@ -647,32 +651,32 @@ int Elec_104_Frame_Handle(STRU_104_TypeDef *str104)
 void Elec_104_Print_Frame(STRU_104_TypeDef *str104, uint8_t type)
 {
     int i = 0;
-    printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+    DBUG("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
     if(type == 0)
     {
-        printf("Receive Frame: \n");
-        printf("    ");
+        DBUG("Receive Frame: \n");
+        DBUG("    ");
         for(i = 0; i < str104->rxLength; i++)
-            printf("%02x ", str104->rx[i]);
-        printf("\n");
+            DBUG("%02x ", str104->rx[i]);
+        DBUG("\n");
 
     }
     else if(type == 1)
     {
-        printf("Send Frame: \n");
-        printf("    ");
+        DBUG("Send Frame: \n");
+        DBUG("    ");
         for(i = 0; i < str104->txLength; i++)
-            printf("%02x ", str104->tx[i]);
-        printf("\n");
+            DBUG("%02x ", str104->tx[i]);
+        DBUG("\n");
 
     }
-    printf("    rxLength:   %02x \n", str104->rxLength);
-    printf("    rxNum:      %02x \n", str104->rxNum);
-    printf("    txNum:      %02x \n", str104->txNum);
-    printf("    otherRxNum: %02x \n", str104->otherRxNum);
-    printf("    otherTxNum: %02x \n", str104->otherTxNum);
-    printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-    printf("\n");
+    DBUG("    rxLength:   %02x \n", str104->rxLength);
+    DBUG("    rxNum:      %02x \n", str104->rxNum);
+    DBUG("    txNum:      %02x \n", str104->txNum);
+    DBUG("    otherRxNum: %02x \n", str104->otherRxNum);
+    DBUG("    otherTxNum: %02x \n", str104->otherTxNum);
+    DBUG("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+    DBUG("\n");
 }
 /*****************************************************************************
  Function    : Elec_104_Frame_Receive
@@ -835,6 +839,74 @@ int Elec_104_Stat_Handle(STRU_104_TypeDef *str104)
         ;
     }
     return res;
+}
+
+/*****************************************************************************
+ Function    : Elec_104_Thread_Task_Timer
+ Description : 定时任务子线程
+ Input       : None
+ Output      : None
+ Return      : None
+ *****************************************************************************/
+void* Elec_104_Thread_Task_Timer(void *arg)
+{
+    pthread_detach(pthread_self());
+    int res = 1;
+    int timeCount = 0;
+    STRU_Queue_TypeDef *p;
+    STRU_104_TypeDef *str104 = (STRU_104_TypeDef *) arg;
+    DBUG("Elec_104_Thread_Task_Timer start\n");
+    while(str104->breakConnectFlag == 0)
+    {
+        usleep(1000);
+        if(timeCount < 1000)
+            timeCount++;
+        else
+        {
+            timeCount = 0;
+            if(str104->t3Counter < str104->config.t3)
+                str104->t3Counter++;
+            else
+            {
+                str104->t3Counter = 0;
+                str104->lastStat104 = str104->stat104;
+                str104->stat104 = STAT_104_SEND_TEST;
+            }
+            if(str104->uT1Flag == 1)
+            {
+                if(str104->t1Counter < str104->config.t1)
+                    str104->t1Counter++;
+                else
+                {
+                    str104->t1Counter = 0;
+                    str104->breakConnectFlag = 1;
+                    break;
+                }
+            }
+            if(str104->numSDWTC > 0)
+            {
+                p = str104->pSendHead;
+                while((p != NULL))
+                {
+                    if(p->txFlag == 1)
+                    {
+                        if(p->t1Counter < str104->config.t1)
+                            p->t1Counter++;
+                        else
+                        {
+                            str104->breakConnectFlag = 1;
+                            break;
+                        }
+                    }
+                    p = p->next;
+                }
+            }
+        }
+        if(str104->stat104 == STAT_104_SEND_START_ACK)
+            str104->stat104 = STAT_104_DEVICE_INIT_OK;
+    }
+    str104->timerCloseFlag = 1;
+    DBUG("Elec_104_Thread_Task_Timer end\n"); 
 }
 /************************ZXDQ *****END OF FILE****/
 

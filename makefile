@@ -17,7 +17,7 @@ ${BIN_TARGET}:${COBJ}
 	$(CXX) ${COBJ} $(CLDFLAGS) -g -o $@
 
 ${DIR_OBJ}/%.o:${DIR_SRC}/%.c
-	$(CXX) $(CFLAGS) -g -c $^ -g -o $@
+	$(CXX) $(CFLAGS) -g -c $^ -o $@
 
 .PHONY:clean
 clean:

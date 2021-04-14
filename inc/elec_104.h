@@ -100,7 +100,7 @@ typedef struct STRU_Queue_TypeDef_t
 /*
  104config
 */
-typedef struct 
+typedef struct STRU_104_Config_TypeDef_t
 {
     uint8_t  t0;
     uint8_t  t1;
@@ -117,7 +117,7 @@ typedef struct
 /*
  104结构体
 */
-typedef struct 
+typedef struct STRU_104_TypeDef_t
 {
     ENUM_STAT_104_TypeDef  stat104;         //104的状态
     ENUM_STAT_104_TypeDef  lastStat104;     //上一个104的状态
@@ -143,6 +143,10 @@ typedef struct
     uint8_t  t0Counter;
     uint8_t  t2Counter;
     uint8_t  t3Counter;
+    
+    /* 定时器线程结束标志 */
+    uint8_t timerCloseFlag;                  
+
     STRU_SIGNAL_TypeDef  *signal[SIGNAL_MAX_NUM];       //状态量信息
     STRU_DETECT_TypeDef  *detect[DETECT_MAX_NUM];       //模拟量信息
     STRU_CONTRIL_TypeDef  *control[CONTROL_MAX_NUM];    //控制量信息
@@ -170,6 +174,7 @@ int  Elec_104_Frame_Receive(STRU_104_TypeDef *str104, uint8_t data);
 int  Elec_104_Stat_Handle(STRU_104_TypeDef *str104);
 
 
+void* Elec_104_Thread_Task_Timer(void *arg);
 
 __attribute__((weak)) void Elec_104_Set_Time_CallBack(STRU_cp56time2a_TypeDef *cp);
 __attribute__((weak)) void Elec_104_Get_Time_CallBack(STRU_cp56time2a_TypeDef *cp);

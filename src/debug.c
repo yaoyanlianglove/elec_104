@@ -14,7 +14,7 @@
 #include <stdarg.h>
 #include <unistd.h>
 #define LOG_MAX_SIZE      1024*1024
-#define VQC_LOG_PATH      "/var/log/curl2tf.log"       
+#define LOG_PATH      "/var/log/elec_104.log"       
 /*****************************************************************************
  Function    : lprintf
  Description : None
@@ -80,12 +80,12 @@ long get_file_size(char* filename)
  *****************************************************************************/
 int log_save(const char *format, ...)
 {  
-    long length = get_file_size(VQC_LOG_PATH);
+    long length = get_file_size(LOG_PATH);
     if (length > LOG_MAX_SIZE)
     {
-        unlink(VQC_LOG_PATH); 
+        unlink(LOG_PATH); 
     }
-    FILE* pFile = fopen(VQC_LOG_PATH, "a+");
+    FILE* pFile = fopen(LOG_PATH, "a+");
     if(!pFile)
     {
         return -1;

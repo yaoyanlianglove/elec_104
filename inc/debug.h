@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <string.h>
 
+/* 0-不输出打印信息，1-窗口打印， 2-输出到日志文件 */
 #define DEBUG_LOG  1
 
 
