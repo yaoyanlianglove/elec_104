@@ -19,7 +19,6 @@
 #include "elec_104.h"
 #include "debug.h"
 
-pthread_mutex_t sharedMutexLock;
 /*****************************************************************************
  Function    : Elec_104_Queue_Init
  Description : None
@@ -35,7 +34,7 @@ STRU_Queue_TypeDef* Elec_104_Queue_Init(void)
         return NULL;
     else
     {
-        p->next = NULL; //设置p指向的区域（头结点）的next域的值
+        p->next = NULL; /* 设置p指向的区域（头结点）的next域的值 */
         return p;
     }
 }
@@ -50,31 +49,31 @@ void Elec_104_Queue_Print(STRU_Queue_TypeDef *queue)
 {
     int i = 0;
     STRU_Queue_TypeDef *p = queue;
-    DBUG("**************************************************\n");
+    printf("**************************************************\n");
     if(p == NULL)
     {
-        DBUG("Queue is NULL\n ");
+        printf("Queue is NULL\n ");
         return ;
     }
     do
     {
         if(p->data != NULL)
         {
-            DBUG("Queue:\n");
+            printf("Queue:\n");
             for(i = 0; i < p->length; i++)
-                DBUG("%02x ", p->data[i]);
-            DBUG("\n");
-            DBUG("p->txFlag:    %d\n", p->txFlag);
-            DBUG("p->txNum:     %d\n", p->txNum);
-            DBUG("p->length:    %d\n", p->length);
-            DBUG("p->priority:  %d\n", p->priority);
-            DBUG("\n");
+                printf("%02x ", p->data[i]);
+            printf("\n");
+            printf("p->txFlag:    %d\n", p->txFlag);
+            printf("p->txNum:     %d\n", p->txNum);
+            printf("p->length:    %d\n", p->length);
+            printf("p->priority:  %d\n", p->priority);
+            printf("\n");
         }
         else
-            DBUG("Queue is NULL\n ");   
+            printf("Queue is NULL\n ");   
         p = p->next;
     }while(p);
-    DBUG("**************************************************\n");
+    printf("**************************************************\n");
 }
 /*****************************************************************************
  Function    : Elec_104_Queue_Insert
@@ -83,33 +82,32 @@ void Elec_104_Queue_Print(STRU_Queue_TypeDef *queue)
  Output      : None
  Return      : Queue的尾部指针
  *****************************************************************************/
-STRU_Queue_TypeDef* Elec_104_Queue_Insert(STRU_104_TypeDef *str104, 
-                                            uint8_t priority)
+int Elec_104_Queue_Insert(STRU_104_TypeDef *str104)
 {
     STRU_Queue_TypeDef *newQueue, *p, *p1;
     p = str104->pSendHead;
-    uint8_t prio = priority;
+    uint8_t prio = str104->rep->priority;
     /* 缓存达到最大值不再增加 */
-    if(str104->numAll >= str104->config.bufferSize)
-        return str104->pSendHead;
+    if(str104->numAll >= str104->config->bufferSize)
+        return 0;
     newQueue = Elec_104_Queue_Init();
-    if(newQueue == NULL) 
-        return NULL;
+    if(newQueue == NULL)
+        return -1;  
     newQueue->data = (uint8_t*)malloc(256);
     if(newQueue->data == NULL) 
-        return NULL;
-    memcpy(newQueue->data, str104->tx + 6, str104->txLength - 6);
-    newQueue->length    = str104->txLength - 6;
+        return -1;
+    memcpy(newQueue->data, str104->rep->data, str104->rep->length);
+    newQueue->length    = str104->rep->length;
     newQueue->priority  = prio;
     newQueue->t1Counter = 0;
     newQueue->txNum     = 0xFFFFFFFF;
     newQueue->txFlag    = 0;
 
-    
     str104->numAll   = str104->numAll + 1;
     if(p == NULL)
     {
-        return newQueue;
+        str104->pSendHead = newQueue;
+        return 0;
     }
     if(prio < p->priority)
     {
@@ -144,21 +142,21 @@ STRU_Queue_TypeDef* Elec_104_Queue_Insert(STRU_104_TypeDef *str104,
             }
         } 
     }
-    return str104->pSendHead;
+    return 0;
 }
 /*****************************************************************************
  Function    : Elec_104_Queue_Delete
  Description : 删除发送序号小于对方接收序号的
  Input       : None
  Output      : None
- Return      : -1,故障 0 正常
+ Return      : 0
  *****************************************************************************/
 int Elec_104_Queue_Delete(STRU_104_TypeDef *str104)
 {
     STRU_Queue_TypeDef *p, *p1;
     p = str104->pSendHead;
     if(p == NULL)
-        return -1;
+        return 0;
     while(p != NULL)
     {
         if(p->txNum <= str104->otherRxNum)
@@ -198,7 +196,6 @@ int Elec_104_Queue_Delete(STRU_104_TypeDef *str104)
     }
     return 0;
 }
-
 /*****************************************************************************
  Function    : Elec_104_I_Frame_Confirm
  Description : None
@@ -210,7 +207,7 @@ int Elec_104_I_Frame_Confirm(STRU_104_TypeDef *str104)
 {
     uint16_t num = 0;
     uint16_t i = 0;
-    int res = 1;
+    int res = 0;
     Elec_104_Queue_Print(str104->pSendHead);
     if((str104->stat104 == STAT_104_SEND_INIT_OK) && (str104->otherRxNum == 1))
         str104->stat104 = STAT_104_SEND_INIT_OK_ACK;
@@ -242,8 +239,9 @@ void Elec_104_Init(STRU_104_TypeDef *str104)
     }
     else
     {
+        str104->initQPR   = QPR_POWER_ON; /* 断电复位 */
         str104->pSendHead = NULL;
-        str104->numAll  = 0;
+        str104->numAll    = 0;
     }
     str104->breakConnectFlag = 0;
     str104->uT1Flag = 0;
@@ -255,12 +253,19 @@ void Elec_104_Init(STRU_104_TypeDef *str104)
     str104->otherRxNum = 0;
     str104->otherTxNum = 0;
     str104->rxCounter = 0;
+    str104->rxOverFlag = 0;
     str104->t0Counter = 0;
     str104->t1Counter = 0;
     str104->t2Counter = 0;
     str104->t3Counter = 0;
-}
 
+    str104->cmdStat->callall = 0;
+    str104->cmdStat->control = 0;
+    str104->rep->asduAddr = str104->config->deviceAddr;
+    str104->rep->headerLength = str104->config->asduHeaderLength;
+    str104->req->asduAddr = str104->config->deviceAddr;
+    str104->req->headerLength = str104->config->asduHeaderLength;
+}
 /*****************************************************************************
  Function    : Elec_104_Build_U_Frame
  Description : None
@@ -288,11 +293,11 @@ void Elec_104_Build_U_Frame(STRU_104_TypeDef *str104, uint8_t type)
 void Elec_104_Build_I_Frame(STRU_104_TypeDef *str104)
 {
     str104->tx[ADDR_APDU_HEAD] = 0x68;
-    str104->tx[ADDR_APCI1] = (str104->txNum) & 0xFE;
-    str104->tx[ADDR_APCI2] = ((str104->txNum) >> 8) & 0xFF;
-    str104->tx[ADDR_APCI3] = (str104->rxNum) & 0xFE;
-    str104->tx[ADDR_APCI4] = ((str104->rxNum) >> 8) & 0xFF;  
-    str104->txLength = str104->tx[ADDR_APDU_LENGTH] + 2;
+    str104->tx[ADDR_APCI1] = ((str104->txNum) << 1) & 0xFF;
+    str104->tx[ADDR_APCI2] = ((str104->txNum) >> 7) & 0xFF;
+    str104->tx[ADDR_APCI3] = ((str104->rxNum) << 1) & 0xFF;
+    str104->tx[ADDR_APCI4] = ((str104->rxNum) >> 7) & 0xFF; 
+    str104->tx[ADDR_APDU_LENGTH] = str104->txLength - 2; 
 }
 /*****************************************************************************
  Function    : Elec_104_Set_S
@@ -307,8 +312,8 @@ void Elec_104_Build_S_Frame(STRU_104_TypeDef *str104, uint8_t type)
     str104->tx[ADDR_APDU_LENGTH] = 0x04;
     str104->tx[ADDR_APCI1] = 0x01;
     str104->tx[ADDR_APCI2] = 0x00;
-    str104->tx[ADDR_APCI3] = (str104->rxNum) & 0xFE;
-    str104->tx[ADDR_APCI4] = ((str104->rxNum) >> 8) & 0xFF;
+    str104->tx[ADDR_APCI3] = ((str104->rxNum) << 1) & 0xFF;
+    str104->tx[ADDR_APCI4] = ((str104->rxNum) >> 7) & 0xFF;
     str104->txLength = str104->tx[ADDR_APDU_LENGTH] + 2;
 }
 /*****************************************************************************
@@ -321,9 +326,12 @@ void Elec_104_Build_S_Frame(STRU_104_TypeDef *str104, uint8_t type)
 int Elec_104_Send_Data(STRU_104_TypeDef *str104)
 {
     int res = 0;
+    uint16_t timeoutCount = 0;
+    uint16_t length = 0;
+    length = str104->txLength;
     while(1)
     {
-        res = send(str104->socketfd, str104->tx, str104->txLength, MSG_DONTWAIT);
+        res = send(str104->socketfd, str104->tx, length, MSG_DONTWAIT);
         if(res < 0)
         {
             if(errno != EWOULDBLOCK && errno != EAGAIN)
@@ -333,18 +341,28 @@ int Elec_104_Send_Data(STRU_104_TypeDef *str104)
             } 
         }
         else if(res == 0)
-        {
             return -1;
-        }
-        else
+        else 
         {
-            res = 0;
-            break;
+            if(res < length)
+            {
+                length = length -res;
+                continue;
+            }
+            else
+            {
+                res = 0;
+                break;
+            }
         }
+        if(timeoutCount < 5000)
+            timeoutCount++;
+        else
+            return -1;  /* 超时退出 */
     }
     if((str104->tx[ADDR_APCI1] & 0x01) == 0)
     {
-        str104->txNum++;//发送后再执行
+        str104->txNum++;/* 发送后再执行 */
         str104->numSDWTC = str104->numSDWTC + 1;
     }
     Elec_104_Print_Frame(str104, 1);
@@ -381,26 +399,6 @@ void Elec_104_Frame_Handle_U(STRU_104_TypeDef *str104)
     }
 }
 /*****************************************************************************
- Function    : Elec_104_ASDU_Insert
- Description : None
- Input       : None
- Output      : None
- Return      : None
- *****************************************************************************/  
-int Elec_104_ASDU_Insert(STRU_104_TypeDef *str104, uint8_t *data, uint8_t length, uint8_t priority)
-{
-    int res = 0;
-    memcpy(str104->tx + 6, data, length);
-    ASDU_Frame_Free(data);
-    str104->txLength = length + 6;
-    str104->pSendHead = Elec_104_Queue_Insert(str104, priority);
-    if(str104->pSendHead == NULL)
-    {
-        res = -1;
-    }
-    return res;
-}
-/*****************************************************************************
  Function    : Elec_104_Handle_Callall
  Description : None
  Input       : None
@@ -409,21 +407,37 @@ int Elec_104_ASDU_Insert(STRU_104_TypeDef *str104, uint8_t *data, uint8_t length
  *****************************************************************************/
 int Elec_104_Handle_Callall(STRU_104_TypeDef *str104)
 {
-    uint8_t *data;
-    uint16_t length;
-    uint8_t priority;
     int res = 0;
     int i = 0;
     int num = 0;
     int r = 0;
-    uint16_t sNum = str104->config.signalNum;
-    uint16_t dNum = str104->config.detectNum;
-    if(str104->otherRxNum == 1)
-        priority = CALLALL_INIT_PRIORITY;
+    uint16_t sNum = str104->config->signalNum;
+    uint16_t dNum = str104->config->detectNum;
+    /* 没有总召唤命令的情况下才能接收总召唤命令*/
+    if(str104->cmdStat->callall == 0)
+        str104->cmdStat->callall = COT_ACT;
     else
-        priority = CALLALL_NON_INIT_PRIORITY;
-    data = ASDU_Frame_Build_Callall_Control(&length, COT_ACTCON);
-    res  = Elec_104_ASDU_Insert(str104, data, length, priority);
+    {
+        res = COT_NO_COS;
+        return res;
+    }
+    if(str104->req->asduAddr != str104->config->deviceAddr)
+    {
+        res = COT_ERR_DEV_ADDR;
+        return res;
+    }
+    if(str104->req->infoAddr != 0)
+    {
+        res = COT_ERR_OBJ_ADDR;
+        return res;
+    }
+    if(str104->otherRxNum == 1)
+        str104->rep->priority = CALLALL_INIT_PRIORITY;
+    else
+        str104->rep->priority = CALLALL_NON_INIT_PRIORITY;
+
+    ASDU_Frame_Build_Callall_Control(str104->rep, COT_ACTCON);
+    res  = Elec_104_Queue_Insert(str104);
     if(res != 0)
         return res;
 
@@ -432,19 +446,19 @@ int Elec_104_Handle_Callall(STRU_104_TypeDef *str104)
     r   = sNum%SIGNAL_NUM_PER_PACKAGE;
     for(i = 0; i < num; i++)
     {
-        data = ASDU_Frame_Build_Callall_Signal(&length, M_SP_NA_1, 
+        ASDU_Frame_Build_Callall_Signal(str104->rep, M_SP_NA_1, 
             str104->signal + SIGNAL_NUM_PER_PACKAGE * i, 
             SIGNAL_START_ADDR + SIGNAL_NUM_PER_PACKAGE * i,
             SIGNAL_NUM_PER_PACKAGE);
-        res  = Elec_104_ASDU_Insert(str104, data, length, priority);
+        res  = Elec_104_Queue_Insert(str104);
         if(res != 0)
             return res;
     }
-    data = ASDU_Frame_Build_Callall_Signal(&length, M_SP_NA_1, 
+    ASDU_Frame_Build_Callall_Signal(str104->rep, M_SP_NA_1, 
             str104->signal + SIGNAL_NUM_PER_PACKAGE * num, 
             SIGNAL_START_ADDR + SIGNAL_NUM_PER_PACKAGE * num,
             r);
-    res  = Elec_104_ASDU_Insert(str104, data, length, priority);
+    res  = Elec_104_Queue_Insert(str104);
     if(res != 0)
         return res;
         
@@ -453,24 +467,24 @@ int Elec_104_Handle_Callall(STRU_104_TypeDef *str104)
     r   = dNum%DETECT_NUM_PER_PACKAGE;
     for(i = 0; i < num; i++)
     {
-        data = ASDU_Frame_Build_Callall_Detect(&length, M_ME_NC_1, 
+        ASDU_Frame_Build_Callall_Detect(str104->rep, M_ME_NC_1, 
             str104->detect + DETECT_NUM_PER_PACKAGE * i, 
             DETECT_START_ADDR + DETECT_NUM_PER_PACKAGE * i,
             DETECT_NUM_PER_PACKAGE);
-        res  = Elec_104_ASDU_Insert(str104, data, length, priority);
+        res  = Elec_104_Queue_Insert(str104);
         if(res != 0)
             return res;
     }
-    data = ASDU_Frame_Build_Callall_Detect(&length, M_ME_NC_1, 
+    ASDU_Frame_Build_Callall_Detect(str104->rep, M_ME_NC_1, 
             str104->detect + DETECT_NUM_PER_PACKAGE * num, 
             DETECT_START_ADDR + DETECT_NUM_PER_PACKAGE * num,
             r);
-    res  = Elec_104_ASDU_Insert(str104, data, length, priority);
+    res  = Elec_104_Queue_Insert(str104);
     if(res != 0)
         return res;
 
-    data = ASDU_Frame_Build_Callall_Control(&length, COT_ACTTERM);
-    res  = Elec_104_ASDU_Insert(str104, data, length, priority);
+    ASDU_Frame_Build_Callall_Control(str104->rep, COT_ACTTERM);
+    res  = Elec_104_Queue_Insert(str104);
 
     if(res != 0)
         return res;
@@ -503,9 +517,9 @@ int Elec_104_Build_ASDU_Time(STRU_104_TypeDef *str104, uint8_t cot)
     int res = 0;
     STRU_cp56time2a_TypeDef cp;
     Elec_104_Get_Time_CallBack(&cp);
-    priority = SNTP_CONFIRM_PRIORITY;
-    data = ASDU_Frame_Build_Time(&length, &cp, cot);
-    res  = Elec_104_ASDU_Insert(str104, data, length, priority);
+    str104->rep->priority = SNTP_CONFIRM_PRIORITY;
+    ASDU_Frame_Build_Time(str104->rep, &cp, cot);
+    res  = Elec_104_Queue_Insert(str104);
     if(res != 0)
         return res;
     return res;
@@ -517,17 +531,16 @@ int Elec_104_Build_ASDU_Time(STRU_104_TypeDef *str104, uint8_t cot)
  Output      : None
  Return      : None
  *****************************************************************************/
-int Elec_104_Handle_NTP(STRU_104_TypeDef *str104, STRU_ASDU_TypeDef *req)
+int Elec_104_Handle_NTP(STRU_104_TypeDef *str104)
 {
     int res = 0;
-    if(req->cot == COT_ACT)
+    if(str104->req->cot == COT_ACT)
     {
         Elec_104_Set_Time(str104);
         res = Elec_104_Build_ASDU_Time(str104, COT_ACTCON);
     }
-    else if(req->cot == COT_REQ)
+    else if(str104->req->cot == COT_REQ)
         res = Elec_104_Build_ASDU_Time(str104, COT_REQ);
-        
     return res;   
 }
 /*****************************************************************************
@@ -537,21 +550,73 @@ int Elec_104_Handle_NTP(STRU_104_TypeDef *str104, STRU_ASDU_TypeDef *req)
  Output      : None
  Return      : None
  *****************************************************************************/
-int Elec_104_Handle_Control(STRU_104_TypeDef *str104, STRU_ASDU_TypeDef *req)
+int Elec_104_Handle_Control(STRU_104_TypeDef *str104)
 {
     uint32_t addrOffset = 0;
-    int res = 0; 
-    // if(req->ti == C_SC_NA_1)  //单点遥控
-    // {
-    //     if((req->cot == COT_ACT) && (req->se == 1)) //遥控选择
-    //     {
-    //         addrOffset = req->infoAddr - 
-    //     }
-    // }
-    // else if(req->ti == C_SC_NB_1) //双点遥控
-    // {
+    int res = 0;
+    int repCot = 0; 
+    addrOffset = str104->req->infoAddr - CONTROL_START_ADDR;
 
-    // }
+    if(str104->req->ti == C_SC_NA_1)  /* 单点遥控 */
+    {
+        if((str104->req->cot == COT_ACT) && (str104->req->se == 1)) /* 遥控选择 */
+        {
+            if(str104->control[addrOffset]->stat == CONTROL_STAT_ORIGIN)
+            {
+                str104->control[addrOffset]->stat = CONTROL_STAT_SELECTED;
+                str104->control[addrOffset]->timeCounter = str104->config->controlTimeout;
+            }
+            else
+            {
+                str104->control[addrOffset]->stat = CONTROL_STAT_ORIGIN;
+                str104->control[addrOffset]->timeCounter = 0;
+               // res = ERR;
+            } 
+        }
+        else if((str104->req->cot == COT_ACT) && (str104->req->se == 0)) /* 遥控确认 */
+        {
+            if(str104->control[addrOffset]->stat == CONTROL_STAT_SELECTED)
+            {
+                str104->control[addrOffset]->stat = CONTROL_STAT_CONFIRM;
+                /*执行遥控*/
+            }
+            else
+            {
+                //res = ERR;
+                str104->control[addrOffset]->stat = CONTROL_STAT_ORIGIN;
+            }
+            str104->control[addrOffset]->timeCounter = 0;   
+        }
+        else if((str104->req->cot == COT_DEACT) && (str104->req->se == 0)) /* 遥控取消 */
+        {
+            if(str104->control[addrOffset]->stat == CONTROL_STAT_SELECTED)
+                str104->control[addrOffset]->stat = CONTROL_STAT_ORIGIN;
+            else
+            {
+               // res = ERR;
+                str104->control[addrOffset]->stat = CONTROL_STAT_ORIGIN;
+            }
+            str104->control[addrOffset]->timeCounter = 0;
+        }
+    }
+    else if(str104->req->ti == C_SC_NB_1) /* 双点遥控 */
+    {
+
+    }
+    return res;
+}
+/*****************************************************************************
+ Function    : Elec_104_Build_I_Frame_Error
+ Description : None
+ Input       : None
+ Output      : None
+ Return      : res < 0 退出程序， 0 正常 
+ *****************************************************************************/
+int Elec_104_Build_I_Frame_Error(STRU_104_TypeDef *str104)
+{
+    int res = 0;
+    ASDU_Frame_Build_Error(str104->rep, str104->req);
+    res  = Elec_104_Queue_Insert(str104);
     return res;
 }
 /*****************************************************************************
@@ -559,40 +624,41 @@ int Elec_104_Handle_Control(STRU_104_TypeDef *str104, STRU_ASDU_TypeDef *req)
  Description : None
  Input       : None
  Output      : None
- Return      : None
+ Return      : res < 0 退出程序， 0 正常，>0 错误COT
  *****************************************************************************/
 int Elec_104_Frame_Handle_I(STRU_104_TypeDef *str104)
 {
     int cmdType = 0;
     int res = 0;
-    STRU_ASDU_TypeDef req;
     str104->rxNum = str104->rxNum + 1;
     str104->otherRxNum = (str104->rx[ADDR_APCI3] >> 1) + (str104->rx[ADDR_APCI4] << 8);
     str104->otherTxNum = (str104->rx[ADDR_APCI1] >> 1) + (str104->rx[ADDR_APCI2] << 8);
     res = Elec_104_I_Frame_Confirm(str104); 
     if(res < 0)
         return res;
-    cmdType = ASDU_Frame_Handle(str104->rx + 6, &req);
-    DBUG("cmdType is : %d\n", cmdType)
+    str104->req->length = str104->rxLength - 6;
+    memcpy(str104->req->data, str104->rx + 6, str104->rxLength);
+    cmdType = ASDU_Frame_Handle(str104->req);
+    DBUG("cmdType is : %d\n", cmdType);
     switch(cmdType)
     {
+        case CMD_ERROR:
+            res = COT_NO_TI;
+            str104->rep->priority = SYSTEM_PRIORITY;
+        break;
         case CMD_CALLALL:
             res = Elec_104_Handle_Callall(str104);
-            if(res < 0)
-                return res;
         break;
         case CMD_NTP:
-            res = Elec_104_Handle_NTP(str104, &req);
-            if(res < 0)
-                return res;
+            res = Elec_104_Handle_NTP(str104);
         break;
         case CMD_CONTROL:
-            res = Elec_104_Handle_Control(str104, &req);
-            if(res < 0)
-                return res;
+            res = Elec_104_Handle_Control(str104);
         break;
         default:;
     }
+    if(res > 0)
+        res = Elec_104_Build_I_Frame_Error(str104);
     return res;
 }
 /*****************************************************************************
@@ -625,20 +691,15 @@ int Elec_104_Frame_Handle(STRU_104_TypeDef *str104)
         {
             if(str104->stat104 >= STAT_104_SEND_INIT_OK)
                 res = Elec_104_Frame_Handle_I(str104);
-            else
-                res = 1;
         }
         else if((str104->rx[ADDR_APCI1] & 0x02) == 0)
         {
             if(str104->stat104 >= STAT_104_SEND_INIT_OK)
                 res = Elec_104_Frame_Handle_S(str104);
-            else
-                res = 1;
         }
         else
             Elec_104_Frame_Handle_U(str104);
     }
-    res = Elec_104_Stat_Handle(str104);
     return res;       
 }
 /*****************************************************************************
@@ -651,32 +712,33 @@ int Elec_104_Frame_Handle(STRU_104_TypeDef *str104)
 void Elec_104_Print_Frame(STRU_104_TypeDef *str104, uint8_t type)
 {
     int i = 0;
-    DBUG("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+    printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
     if(type == 0)
     {
-        DBUG("Receive Frame: \n");
-        DBUG("    ");
+        printf("Receive Frame: \n");
+        printf("    ");
         for(i = 0; i < str104->rxLength; i++)
-            DBUG("%02x ", str104->rx[i]);
-        DBUG("\n");
-
+            printf("%02x ", str104->rx[i]);
+        printf("\n");
+        printf("    rxLength:   %02x \n", str104->rxLength);
     }
     else if(type == 1)
     {
-        DBUG("Send Frame: \n");
-        DBUG("    ");
+        printf("Send Frame: \n");
+        printf("    ");
         for(i = 0; i < str104->txLength; i++)
-            DBUG("%02x ", str104->tx[i]);
-        DBUG("\n");
-
+            printf("%02x ", str104->tx[i]);
+        printf("\n");
+        printf("    txLength:   %02x \n", str104->txLength);
     }
-    DBUG("    rxLength:   %02x \n", str104->rxLength);
-    DBUG("    rxNum:      %02x \n", str104->rxNum);
-    DBUG("    txNum:      %02x \n", str104->txNum);
-    DBUG("    otherRxNum: %02x \n", str104->otherRxNum);
-    DBUG("    otherTxNum: %02x \n", str104->otherTxNum);
-    DBUG("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
-    DBUG("\n");
+    printf("    numAll:     %02x \n", str104->numAll);
+    printf("    numSDWTC:   %02x \n", str104->numSDWTC);
+    printf("    rxNum:      %02x \n", str104->rxNum);
+    printf("    txNum:      %02x \n", str104->txNum);
+    printf("    otherRxNum: %02x \n", str104->otherRxNum);
+    printf("    otherTxNum: %02x \n", str104->otherTxNum);
+    printf("++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\n");
+    printf("\n");
 }
 /*****************************************************************************
  Function    : Elec_104_Frame_Receive
@@ -685,9 +747,8 @@ void Elec_104_Print_Frame(STRU_104_TypeDef *str104, uint8_t type)
  Output      : None
  Return      : None
  *****************************************************************************/
-int Elec_104_Frame_Receive(STRU_104_TypeDef *str104, uint8_t data)
+void Elec_104_Frame_Receive(STRU_104_TypeDef *str104, uint8_t data)
 {
-    int res = 0;
     switch(str104->rxCounter)
     {
         case 0:
@@ -703,23 +764,20 @@ int Elec_104_Frame_Receive(STRU_104_TypeDef *str104, uint8_t data)
             str104->rxCounter++;
         break;
         default:
-            if(str104->rxCounter < str104->rxLength)
+            str104->rx[str104->rxCounter] = data;
+            if(str104->rxCounter < str104->rxLength - 1)
             {
-                str104->rx[str104->rxCounter] = data;
                 str104->rxCounter++;
             }
             else
             {
                 str104->rxCounter = 0;
                 Elec_104_Print_Frame(str104, 0);
-                str104->t3Counter = 0; //收到任意帧，t3重新计数
-                res = Elec_104_Frame_Handle(str104);
-                memset(str104->rx, 0, 256);
-                str104->rxLength = 0;
+                str104->t3Counter = 0; /* 收到任意帧，t3重新计数 */
+                str104->rxOverFlag = 1;
             }
         break;
     }
-    return res;
 }
 /*****************************************************************************
  Function    : Elec_104_Send_Init_OK
@@ -730,14 +788,16 @@ int Elec_104_Frame_Receive(STRU_104_TypeDef *str104, uint8_t data)
  *****************************************************************************/
 int Elec_104_Send_Init_OK(STRU_104_TypeDef *str104)
 {
-    uint16_t length = 0;
-    uint8_t *data;
     int res = 0;
-    data = ASDU_Frame_Build_Init_OK(&length, COI_POWER_ON);
-    res = Elec_104_ASDU_Insert(str104, data, length, SYSTEM_PRIORITY);
+    ASDU_Frame_Build_Init_OK(str104->rep, str104->initQPR);
+    res = Elec_104_Queue_Insert(str104);
     if(res != 0)
         return res;
+    str104->txLength = str104->rep->length + 6;
+    memcpy(str104->tx + 6, str104->rep->data, str104->rep->length);
+    Elec_104_Build_I_Frame(str104);
     res = Elec_104_Send_Data(str104);
+    DBUG("Elec_104_Send_Init_OK res is %d\n", res);
     if(res == 0)
     {
         str104->pSendHead->txFlag = 1;
@@ -757,7 +817,7 @@ int Elec_104_Stat_Handle(STRU_104_TypeDef *str104)
     int res = 0;
     int num = 0;
     STRU_Queue_TypeDef *p;
-    DBUG("Elec_104_Stat: %d\n", str104->stat104);
+    //DBUG("Elec_104_Stat: %d\n", str104->stat104);
     switch(str104->stat104)
     {
         case STAT_104_POWER_ON:
@@ -777,10 +837,10 @@ int Elec_104_Stat_Handle(STRU_104_TypeDef *str104)
             str104->stat104 = STAT_104_CONNECT_OK;
         break;
         case STAT_104_CONNECT_OK:
-            //超过k值的数据未确认，停止发送
-            if(str104->numSDWTC >= str104->config.k)
+            /* 超过k值的数据未确认，停止发送 */
+            if(str104->numSDWTC >= str104->config->k)
                 break;
-            //待发送数据等于所有缓存数据减去已发送数据
+            /* 待发送数据等于所有缓存数据减去已发送数据 */
             num = str104->numAll - str104->numSDWTC;
             if(num > 0)
             {
@@ -788,19 +848,15 @@ int Elec_104_Stat_Handle(STRU_104_TypeDef *str104)
                 while(p != NULL)
                 {
                     if(p->txFlag == 0)
-                    {
                         break;
-                    }
                     else
-                    {
                         p = p->next;
-                    }
                 }
                 memcpy(str104->tx + 6, p->data, p->length);
-                str104->tx[ADDR_APDU_LENGTH] = p->length + 4;
+                str104->txLength = p->length + 6;
                 Elec_104_Build_I_Frame(str104);
                 res = Elec_104_Send_Data(str104);
-                if(res == 0) //发送成功，缓存置标志发送成功
+                if(res == 0) /* 发送成功，缓存置标志发送成功 */
                 {
                     p->txNum = str104->txNum;
                     p->txFlag = 1;
@@ -820,7 +876,7 @@ int Elec_104_Stat_Handle(STRU_104_TypeDef *str104)
             str104->breakConnectFlag = 1;
         break;
         case STAT_104_RECIEVE_TEST_CMD:
-            Elec_104_Build_U_Frame(str104, STARTDT_CONFIRM);
+            Elec_104_Build_U_Frame(str104, TESTFR_CONFIRM);
             res = Elec_104_Send_Data(str104);
             str104->stat104 = str104->lastStat104;
         break;
@@ -840,7 +896,6 @@ int Elec_104_Stat_Handle(STRU_104_TypeDef *str104)
     }
     return res;
 }
-
 /*****************************************************************************
  Function    : Elec_104_Thread_Task_Timer
  Description : 定时任务子线程
@@ -864,7 +919,7 @@ void* Elec_104_Thread_Task_Timer(void *arg)
         else
         {
             timeCount = 0;
-            if(str104->t3Counter < str104->config.t3)
+            if(str104->t3Counter < str104->config->t3)
                 str104->t3Counter++;
             else
             {
@@ -874,7 +929,7 @@ void* Elec_104_Thread_Task_Timer(void *arg)
             }
             if(str104->uT1Flag == 1)
             {
-                if(str104->t1Counter < str104->config.t1)
+                if(str104->t1Counter < str104->config->t1)
                     str104->t1Counter++;
                 else
                 {
@@ -890,10 +945,11 @@ void* Elec_104_Thread_Task_Timer(void *arg)
                 {
                     if(p->txFlag == 1)
                     {
-                        if(p->t1Counter < str104->config.t1)
+                        if(p->t1Counter < str104->config->t1)
                             p->t1Counter++;
                         else
                         {
+                            p->t1Counter = 0;
                             str104->breakConnectFlag = 1;
                             break;
                         }
@@ -903,10 +959,119 @@ void* Elec_104_Thread_Task_Timer(void *arg)
             }
         }
         if(str104->stat104 == STAT_104_SEND_START_ACK)
+        {
             str104->stat104 = STAT_104_DEVICE_INIT_OK;
+        }      
     }
     str104->timerCloseFlag = 1;
     DBUG("Elec_104_Thread_Task_Timer end\n"); 
+}
+/*****************************************************************************
+ Function    : Elec_104_Malloc
+ Description : 内存分配
+ Input       : None
+ Output      : None
+ Return      : None
+ *****************************************************************************/
+STRU_104_TypeDef* Elec_104_Malloc(void)
+{
+    STRU_104_TypeDef *str104;
+    str104 = (STRU_104_TypeDef *)malloc(sizeof(struct STRU_104_TypeDef_t));
+    if(str104 == NULL)
+        return NULL;
+
+    str104->rx = (uint8_t *)malloc(256);
+    if(str104->rx == NULL)
+        goto ELEC_104_MALLOC_FAILED;
+
+    str104->tx = (uint8_t *)malloc(256);
+    if(str104->tx == NULL)
+        goto ELEC_104_MALLOC_FAILED;
+    
+    str104->config = (STRU_104_Config_TypeDef *)malloc(sizeof(struct STRU_104_Config_TypeDef_t));
+    if(str104->config == NULL)
+        goto ELEC_104_MALLOC_FAILED;
+
+    str104->rep = (STRU_ASDU_TypeDef *)malloc(sizeof(struct STRU_ASDU_TypeDef_t));
+    if(str104->rep == NULL)
+        goto ELEC_104_MALLOC_FAILED;
+    
+    str104->req = (STRU_ASDU_TypeDef *)malloc(sizeof(struct STRU_ASDU_TypeDef_t));
+    if(str104->req == NULL)
+        goto ELEC_104_MALLOC_FAILED;
+    
+    str104->cmdStat = (STRU_CMD_STAT_TypeDef *)malloc(sizeof(struct STRU_CMD_STAT_TypeDef_t));
+    if(str104->cmdStat == NULL)
+        goto ELEC_104_MALLOC_FAILED;
+    
+    str104->req->data = (uint8_t *)malloc(256);
+    if(str104->req->data == NULL)
+        goto ELEC_104_MALLOC_FAILED;
+    
+    str104->rep->data = (uint8_t *)malloc(256);
+    if(str104->rep->data == NULL)
+        goto ELEC_104_MALLOC_FAILED;
+    
+    return str104;
+ELEC_104_MALLOC_FAILED:
+    Elec_104_Free(str104);
+    return str104;
+}
+/*****************************************************************************
+ Function    : Elec_104_Free
+ Description : 内存释放
+ Input       : None
+ Output      : None
+ Return      : None
+ *****************************************************************************/
+void Elec_104_Free(STRU_104_TypeDef *str104)
+{
+    if(str104->rx != NULL)
+    {
+        free(str104->rx);
+        str104->rx = NULL;
+    }
+
+    if(str104->tx != NULL)
+    {
+        free(str104->tx);
+        str104->tx = NULL;
+    }
+    if(str104->config != NULL)
+    {
+        free(str104->config);
+        str104->config = NULL;
+    }
+    if(str104->rep->data != NULL)
+    {
+        free(str104->rep->data);
+        str104->rep->data = NULL;
+    }
+    if(str104->rep != NULL)
+    {
+        free(str104->rep);
+        str104->rep = NULL;
+    }
+    if(str104->req->data != NULL)
+    {
+        free(str104->req->data);
+        str104->req->data = NULL;
+    }
+    if(str104->req != NULL)
+    {
+        free(str104->req);
+        str104->req = NULL;
+    }
+    if(str104->cmdStat != NULL)
+    {
+        free(str104->cmdStat);
+        str104->cmdStat = NULL;
+    }
+    if(str104 != NULL)
+    {
+        free(str104);
+        str104 = NULL;
+    }
 }
 /************************ZXDQ *****END OF FILE****/
 

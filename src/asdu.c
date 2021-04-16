@@ -13,6 +13,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include "asdu.h"
+#include "debug.h"
 
 /*****************************************************************************
  Function    : ASDU_Header_Config
@@ -23,16 +24,23 @@
  *****************************************************************************/
 void ASDU_Header_Config(STRU_ASDU_TypeDef *asdu)
 {
-    asdu->data[TI_ADDR]    = asdu->ti;
-    asdu->data[VSQ_ADDR]   = (asdu->sq << 7) | asdu->infoNum;
-    asdu->data[COT1_ADDR]  = asdu->cot | (asdu->t << 7) | (asdu->pn << 6);
-    asdu->data[COT2_ADDR]  = 0x00;
-    asdu->data[DEV1_ADDR]  = asdu->asduAddr & 0xFF;
-    asdu->data[DEV2_ADDR]  = (asdu->asduAddr >> 8) & 0xFF;
-    asdu->data[INFO1_ADDR] = asdu->infoAddr & 0xFF;
-    asdu->data[INFO2_ADDR] = (asdu->infoAddr >> 8) & 0xFF;
-    asdu->data[INFO3_ADDR] = (asdu->infoAddr >> 16) & 0xFF;
-    asdu->data[QOI_ADDR]   = asdu->qoi;
+    if(asdu->headerLength == 9)
+    {
+        asdu->data[TI_ADDR]    = asdu->ti;
+        asdu->data[VSQ_ADDR]   = (asdu->sq << 7) | asdu->infoNum;
+        asdu->data[COT1_ADDR]  = asdu->cot | (asdu->t << 7) | (asdu->pn << 6);
+        asdu->data[COT2_ADDR]  = 0x00;
+        asdu->data[DEV1_ADDR]  = asdu->asduAddr & 0xFF;
+        asdu->data[DEV2_ADDR]  = (asdu->asduAddr >> 8) & 0xFF;
+        asdu->data[INFO1_ADDR] = asdu->infoAddr & 0xFF;
+        asdu->data[INFO2_ADDR] = (asdu->infoAddr >> 8) & 0xFF;
+        asdu->data[INFO3_ADDR] = (asdu->infoAddr >> 16) & 0xFF;
+        asdu->data[QOI_ADDR]   = asdu->qoi;
+    }
+    else
+    {
+        /*其他情况*/
+    }
 }
 
 /*****************************************************************************
@@ -42,29 +50,19 @@ void ASDU_Header_Config(STRU_ASDU_TypeDef *asdu)
  Output      : None
  Return      : None
  *****************************************************************************/
-uint8_t* ASDU_Frame_Build_Init_OK(uint16_t *length, uint8_t coi)
+void ASDU_Frame_Build_Init_OK(STRU_ASDU_TypeDef *asdu, uint8_t qpr)
 {
-    STRU_ASDU_TypeDef asdu;
-    uint8_t *data;
-
-    asdu.ti       = M_EI_NA_1;
-    asdu.sq       = 0;
-    asdu.infoNum  = 1;
-    asdu.t        = 0;
-    asdu.pn       = 0;
-    asdu.cot      = COT_INIT;
-    asdu.infoAddr = 0;
-    asdu.asduAddr = DEVICE_ID;
-    asdu.qoi       = coi;
-    asdu.length   = 10;
-    
-    ASDU_Header_Config(&asdu);
-    
-    *length = asdu.length;
-    data = (uint8_t *)malloc(*length);
-    memcpy(data, asdu.data, asdu.length);
-
-    return data;
+    asdu->ti       = M_EI_NA_1;
+    asdu->sq       = 0;
+    asdu->infoNum  = 1;
+    asdu->t        = 0;
+    asdu->pn       = 0;
+    asdu->cot      = COT_INIT;
+    asdu->infoAddr = 0;
+    asdu->qoi      = qpr;
+    asdu->length   = 10;
+    asdu->priority = SYSTEM_PRIORITY;
+    ASDU_Header_Config(asdu);
 }
 /*****************************************************************************
  Function    : ASDU_Frame_Build_Callall_Signal
@@ -77,36 +75,27 @@ uint8_t* ASDU_Frame_Build_Init_OK(uint16_t *length, uint8_t coi)
  Output      : None
  Return      : None
  *****************************************************************************/
-uint8_t* ASDU_Frame_Build_Callall_Signal(uint16_t *length, uint8_t ti, 
+void ASDU_Frame_Build_Callall_Signal(STRU_ASDU_TypeDef *asdu, uint8_t ti, 
                STRU_SIGNAL_TypeDef **signal, uint32_t signalAddr, uint8_t num)
 {
-    STRU_ASDU_TypeDef asdu;
-    uint8_t *data;
     int i = 0;
-
-    asdu.ti       = ti;
-    asdu.sq       = 1;
-    asdu.infoNum  = num;
-    asdu.t        = 0;
-    asdu.pn       = 0;
-    asdu.cot      = COT_INTROGEN;
-    asdu.infoAddr = signalAddr;
-    asdu.asduAddr = DEVICE_ID;
+    uint8_t headerLen = asdu->headerLength;
+    asdu->ti       = ti;
+    asdu->sq       = 1;
+    asdu->infoNum  = num;
+    asdu->t        = 0;
+    asdu->pn       = 0;
+    asdu->cot      = COT_INTROGEN;
+    asdu->infoAddr = signalAddr;
     
-    ASDU_Header_Config(&asdu);
+    ASDU_Header_Config(asdu);
 
-    //当前总召不考虑时标
-    asdu.length   = 9 + 3 + num*1;
+    /* 当前总召不考虑时标 */
+    asdu->length   = headerLen + num*1;
     for(i = 0; i < num; i++)
     {
-        asdu.data[9 + i*1] = (*signal)->stat;
+        asdu->data[headerLen + i*1] = (*signal)->stat | (*signal)->qds;
     }
-
-    *length = asdu.length;
-    data = (uint8_t *)malloc(*length);
-    memcpy(data, asdu.data, asdu.length);
-
-    return data;
 }
 /*****************************************************************************
  Function    : ASDU_Frame_Build_Callall_Detect
@@ -119,41 +108,34 @@ uint8_t* ASDU_Frame_Build_Callall_Signal(uint16_t *length, uint8_t ti,
  Output      : None
  Return      : None
  *****************************************************************************/
-uint8_t* ASDU_Frame_Build_Callall_Detect(uint16_t *length, uint8_t ti, 
+void ASDU_Frame_Build_Callall_Detect(STRU_ASDU_TypeDef *asdu, uint8_t ti, 
                STRU_DETECT_TypeDef **detect, uint32_t detectAddr, uint8_t num)
 {
-    STRU_ASDU_TypeDef asdu;
-    uint8_t *data;
-    uint8_t floatTmp[4];
     int i = 0;
+    uint8_t floatTmp[4];
+    uint8_t headerLen = asdu->headerLength;
 
-    asdu.ti       = ti;
-    asdu.sq       = 1;
-    asdu.infoNum  = num;
-    asdu.t        = 0;
-    asdu.pn       = 0;
-    asdu.cot      = COT_INTROGEN;
-    asdu.infoAddr = detectAddr;
-    asdu.asduAddr = DEVICE_ID;
+    asdu->ti       = ti;
+    asdu->sq       = 1;
+    asdu->infoNum  = num;
+    asdu->t        = 0;
+    asdu->pn       = 0;
+    asdu->cot      = COT_INTROGEN;
+    asdu->infoAddr = detectAddr;
     
-    ASDU_Header_Config(&asdu);
+    ASDU_Header_Config(asdu);
 
     //短浮点
-    asdu.length   = 9 + 3 + num*5;
+    asdu->length   = headerLen + num*5;
     for(i = 0; i < num; i++)
     {
         memcpy(floatTmp, &((*(detect + i))->value), 4);
-        asdu.data[9 + i*5]     = floatTmp[0];
-        asdu.data[9 + i*5 + 1] = floatTmp[1];
-        asdu.data[9 + i*5 + 2] = floatTmp[2];
-        asdu.data[9 + i*5 + 3] = floatTmp[3];
-        asdu.data[9 + i*5 + 4] = ((*detect)->qds);
+        asdu->data[headerLen + i*5]     = floatTmp[0];
+        asdu->data[headerLen + i*5 + 1] = floatTmp[1];
+        asdu->data[headerLen + i*5 + 2] = floatTmp[2];
+        asdu->data[headerLen + i*5 + 3] = floatTmp[3];
+        asdu->data[headerLen + i*5 + 4] = ((*detect)->qds);
     }
-    *length = asdu.length;
-    data = (uint8_t *)malloc(*length);
-    memcpy(data, asdu.data, asdu.length);
-
-    return data;
 }
 /*****************************************************************************
  Function    : ASDU_Frame_Build_Callall_Control
@@ -162,31 +144,22 @@ uint8_t* ASDU_Frame_Build_Callall_Detect(uint16_t *length, uint8_t ti,
  Output      : None
  Return      : None
  *****************************************************************************/
-uint8_t* ASDU_Frame_Build_Callall_Control(uint16_t *length, uint8_t cot)
+void ASDU_Frame_Build_Callall_Control(STRU_ASDU_TypeDef *asdu, uint8_t cot)
 {
-    STRU_ASDU_TypeDef asdu;
-    uint8_t *data;
-
-    asdu.ti       = C_IC_NA_1;
-    asdu.sq       = 0;
-    asdu.infoNum  = 1;
-    asdu.t        = 0;
-    asdu.pn       = 0;
-    asdu.cot      = cot;
-    asdu.infoAddr = 0;
-    asdu.asduAddr = DEVICE_ID;
+    asdu->ti       = C_IC_NA_1;
+    asdu->sq       = 0;
+    asdu->infoNum  = 1;
+    asdu->t        = 0;
+    asdu->pn       = 0;
+    asdu->cot      = cot;
+    asdu->infoAddr = 0;
     if(cot == COT_ACTCON)
-        asdu.qoi = 20;
+        asdu->qoi = 20;
     else if(cot == COT_ACTTERM)
-        asdu.qoi = 0;
-    asdu.length   = 10;
+        asdu->qoi = 0;
+    asdu->length   = 10;
     
-    ASDU_Header_Config(&asdu);
-    
-    *length = asdu.length;
-    data = (uint8_t *)malloc(*length);
-    memcpy(data, asdu.data, asdu.length);
-    return data;
+    ASDU_Header_Config(asdu);
 }
 /*****************************************************************************
  Function    : ASDU_Frame_Build_Time
@@ -195,29 +168,33 @@ uint8_t* ASDU_Frame_Build_Callall_Control(uint16_t *length, uint8_t cot)
  Output      : None
  Return      : None
  *****************************************************************************/
-uint8_t* ASDU_Frame_Build_Time(uint16_t *length, STRU_cp56time2a_TypeDef *cp, uint8_t cot)
+void ASDU_Frame_Build_Time(STRU_ASDU_TypeDef *asdu, STRU_cp56time2a_TypeDef *cp, uint8_t cot)
 {
-    STRU_ASDU_TypeDef asdu;
-    uint8_t *data;
-
-    asdu.ti       = C_CI_NA_1;
-    asdu.sq       = 0;
-    asdu.infoNum  = 1;
-    asdu.t        = 0;
-    asdu.pn       = 0;
-    asdu.cot      = cot;
-    asdu.infoAddr = 0;
-    asdu.asduAddr = DEVICE_ID;
+    asdu->ti       = C_CI_NA_1;
+    asdu->sq       = 0;
+    asdu->infoNum  = 1;
+    asdu->t        = 0;
+    asdu->pn       = 0;
+    asdu->cot      = cot;
+    asdu->infoAddr = 0;
+   
+    asdu->length   = 16;
     
-    asdu.length   = 16;
-    
-    ASDU_Header_Config(&asdu);
-
-    memcpy(asdu.data + 9, cp, 7);
-    *length = asdu.length;
-    data = (uint8_t *)malloc(*length);
-    memcpy(data, asdu.data, asdu.length);
-    return data;
+    ASDU_Header_Config(asdu);
+    memcpy(asdu->data + asdu->headerLength, cp, 7);
+}
+/*****************************************************************************
+ Function    : ASDU_Frame_Build_Error
+ Description : 错误回复
+ Input       : None
+ Output      : None
+ Return      : None
+ *****************************************************************************/
+void ASDU_Frame_Build_Error(STRU_ASDU_TypeDef *asdu, STRU_ASDU_TypeDef *req)
+{
+    memcpy(asdu->data, req->data, req->length);
+    if(asdu->headerLength == 9)
+        asdu->data[COT2_ADDR] = asdu->cot | 0x40; /* 否定 */
 }
 /*****************************************************************************
  Function    : ASDU_Frame_Handle
@@ -226,19 +203,23 @@ uint8_t* ASDU_Frame_Build_Time(uint16_t *length, STRU_cp56time2a_TypeDef *cp, ui
  Output      : None
  Return      : None
  *****************************************************************************/
-int ASDU_Frame_Handle(uint8_t *data, STRU_ASDU_TypeDef *req)
+int ASDU_Frame_Handle(STRU_ASDU_TypeDef *asdu)
 {
     int res = 0;
-    req->ti    = data[TI_ADDR];
-    req->cot   = data[COT1_ADDR] & 0x3F;
-    req->se    = data[QOI_ADDR] & 0x80;
-    req->qoi   = data[QOI_ADDR];
-    req->infoAddr = (data[INFO3_ADDR] << 16) + (data[INFO2_ADDR] << 8) + data[INFO1_ADDR];
-    switch(req->ti)
+    DBUG("asdu->headerLength is %d\n", asdu->headerLength);
+    if(asdu->headerLength == 9)
+    {
+        asdu->ti       = asdu->data[TI_ADDR];
+        asdu->cot      = asdu->data[COT1_ADDR] & 0x3F;
+        asdu->se       = asdu->data[QOI_ADDR] & 0x80;
+        asdu->qoi      = asdu->data[QOI_ADDR];
+        asdu->infoAddr = (asdu->data[INFO3_ADDR] << 16) + (asdu->data[INFO2_ADDR] << 8) + asdu->data[INFO1_ADDR];
+        asdu->asduAddr = (asdu->data[DEV2_ADDR] << 8) + asdu->data[DEV1_ADDR];
+    }
+    switch(asdu->ti)
     {
         case C_IC_NA_1:
-            if((req->qoi == 20) && (req->cot == COT_ACT))
-                res = CMD_CALLALL;
+            res = CMD_CALLALL;
         break;
         case C_CI_NA_1:
             res = CMD_NTP;
@@ -246,7 +227,8 @@ int ASDU_Frame_Handle(uint8_t *data, STRU_ASDU_TypeDef *req)
         case C_SC_NA_1:case C_SC_NB_1:
             res = CMD_CONTROL;
         break;
-        default:;
+        default:
+            res = CMD_ERROR;
     }
     return res;
 }
@@ -260,21 +242,6 @@ int ASDU_Frame_Handle(uint8_t *data, STRU_ASDU_TypeDef *req)
 void ASDU_Frame_Get_Cp56time2a(uint8_t *data, STRU_cp56time2a_TypeDef *cp)
 {
     memcpy(cp, data, 7);
-}
-/*****************************************************************************
- Function    : ASDU_Frame_Free
- Description : None
- Input       : None
- Output      : None
- Return      : None
- *****************************************************************************/
-void ASDU_Frame_Free(uint8_t *data)
-{
-    if(data != NULL)
-    {
-        free(data);
-        data = NULL;
-    }
 }
 /************************ZXDQ *****END OF FILE****/
 

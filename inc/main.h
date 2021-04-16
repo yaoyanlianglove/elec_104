@@ -1,6 +1,6 @@
 /**
   ******************************************************************************
-  * File Name          : example.h
+  * File Name          : main.h
   * Description        : This file provides the example code.
   ******************************************************************************
   * @attention
@@ -23,14 +23,15 @@ typedef struct STRU_Client_TypeDef_t
 {
     pthread_t pthreadIdTimerTask;
     pthread_t pthreadId104Main;
+    pthread_t pthreadId104Recv;
     STRU_104_TypeDef *str104;
     char clientIp[INET_ADDRSTRLEN];
     int  connfd;
     uint8_t stat;
 }STRU_Client_TypeDef;
 
-int Tcp_Listen(STRU_Client_TypeDef *client, const char *ip, int port);
-void Example_Data_Map(STRU_104_TypeDef* str104);
+int Elec_104_Tcp_Listen(STRU_Client_TypeDef *client, const char *ip, int port);
+void Elec_104_Data_Map(STRU_104_TypeDef* str104);
 #endif
 /************************ZXDQ *****END OF FILE****/
   
